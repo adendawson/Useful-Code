@@ -1,6 +1,18 @@
 import numpy as np
 from scipy.signal import find_peaks, savgol_filter
 from astropy.modeling.models import Linear1D
+from scipy.interpolate import interp1d
+from scipy.special import voigt_profile
+
+def file_parser(files, band):
+    file_names = []
+    for file in files:
+        with fits.open(file) as hdu:
+            header = hdu[0].header
+    
+        if header['FILTER'] == band:
+            file_names.append(file)
+    return file_names
 
 def find_nearest(array, value):
     array = np.asarray(array)
@@ -49,7 +61,6 @@ def minimum_remover(data_x, data_y, prominence, distance, mode):
             max_1 = first_local_max(arr1)
             max_2 = first_local_max(arr2)
 
-            #if the maximum is either missed in the window or the array ends before the maximum is found
             if max_1 == len(arr1):
                 max_1 = len(arr1) - 1
             if max_2 == len(arr2):
@@ -62,7 +73,6 @@ def minimum_remover(data_x, data_y, prominence, distance, mode):
             min_1 = first_local_min(arr1)
             min_2 = first_local_min(arr2)
             
-            #if the minimum is either missed in the window or the array ends before the minimum is found
             if min_1 == len(arr1):
                 min_1 = len(arr1) - 1
             if min_2 == len(arr2):
@@ -73,18 +83,23 @@ def minimum_remover(data_x, data_y, prominence, distance, mode):
 
         # keeping the indices within array bounds regardless
         idx1 = max(0, idx1)
-        idx2 = min(len(data_x), idx2)
+        idx2 = min(len(data_x) - 1, idx2)
 
         #line = line_maker(data_x[idx1], data_y[idx1], data_x[idx2 - 1], data_y[idx2 - 1])
         line = line_maker(data_x[idx1], data_y[idx1], data_x[idx2], data_y[idx2])
-        data_y_copy[idx1:idx2] = line(data_x[idx1:idx2])
+        data_y_copy[idx1:idx2 + 1] = line(data_x[idx1:idx2 + 1])
 
     return data_y_copy#, peaks
 
 def cleaner(wl_arr, spectrum_arr, wl_1, wl_2):
-    
-    line = line_maker(wl_arr[find_nearest(wl_arr, wl_1)], spectrum_arr[find_nearest(wl_arr, wl_1)], wl_arr[find_nearest(wl_arr, wl_2)], spectrum_arr[find_nearest(wl_arr, wl_2)])
-    
-    spectrum_arr[find_nearest(wl_arr, wl_1):find_nearest(wl_arr, wl_2) + 1] = line(wl_arr[find_nearest(wl_arr, wl_1):find_nearest(wl_arr, wl_2) + 1])
-
+    idx1 = find_nearest(wl_arr, wl_1)
+    idx2 = find_nearest(wl_arr, wl_2)
+    line = line_maker(wl_arr[idx1], spectrum_arr[idx1], wl_arr[idx2], spectrum_arr[idx2])
+    spectrum_arr[idx1:idx2 + 1] = line(wl_arr[idx1:idx2 + 1])
     return spectrum_arr
+
+def voigt(x, x0, A, sigma, gamma, continuum_level = 0):
+
+    peak_norm = voigt_profile(0, sigma, gamma)
+    
+    return continuum_level + ((A / peak_norm) * voigt_profile(x - x0, sigma, gamma))
